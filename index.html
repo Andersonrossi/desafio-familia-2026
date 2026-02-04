@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Desafio Familiar 2026</title>
+    <title>Desafio Familiar 2025</title>
     <!-- Bibliotecas -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -14,8 +14,9 @@
         .overflow-x-auto::-webkit-scrollbar { height: 6px; }
         .overflow-x-auto::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
         @media print { .no-print { display: none; } }
-        /* Garante que o PDF não corte */
         #conteudoPDF { width: 100%; max-width: 800px; margin: auto; padding: 20px; background: white; }
+        th { cursor: pointer; transition: background 0.2s; }
+        th:hover { background-color: #f8fafc; }
     </style>
 </head>
 <body class="bg-[#f3f7fa] p-2 md:p-4 font-sans text-gray-800">
@@ -23,8 +24,8 @@
     <!-- Header -->
     <div class="max-w-5xl mx-auto text-center mt-6 mb-10 no-print">
         <div class="text-4xl mb-2">🏆</div>
-        <h1 class="text-3xl font-bold text-[#1e293b]">Desafio Familiar 2026</h1>
-        <p class="text-gray-500 text-sm">Painel de Controle de Saúde</p>
+        <h1 class="text-3xl font-bold text-[#1e293b]">Desafio Familiar 2025</h1>
+        <p class="text-gray-500 text-sm italic">Painel de Controle de Saúde</p>
     </div>
 
     <!-- Cards de Status -->
@@ -63,7 +64,7 @@
             </div>
         </div>
 
-        <!-- ABA: RELATÓRIO -->
+        <!-- ABA: RELATÓRIO (Com Cabeçalhos Clicáveis) -->
         <div id="aba-relatorio" class="hidden bg-white p-4 md:p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
             <div id="conteudoPDF">
                 <div class="flex justify-between items-center mb-8">
@@ -77,13 +78,13 @@
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
-                        <thead>
+                        <thead id="cabecalhoTabela">
                             <tr class="text-[10px] text-gray-400 uppercase tracking-widest border-b">
-                                <th class="pb-4">Membro</th>
-                                <th class="pb-4">Inicial</th>
-                                <th class="pb-4">Atual</th>
-                                <th class="pb-4">Eliminado</th>
-                                <th class="pb-4 text-right">% Perda</th>
+                                <th class="pb-4 pr-2" onclick="ordenarPor('nome')">Membro <span id="seta-nome"></span></th>
+                                <th class="pb-4 pr-2" onclick="ordenarPor('peso_inicial')">Inicial <span id="seta-peso_inicial"></span></th>
+                                <th class="pb-4 pr-2" onclick="ordenarPor('peso_atual')">Atual <span id="seta-peso_atual"></span></th>
+                                <th class="pb-4 pr-2" onclick="ordenarPor('eliminado')">Eliminado <span id="seta-eliminado"></span></th>
+                                <th class="pb-4 text-right pr-2 font-bold" onclick="ordenarPor('perda_pct')">% Perda <span id="seta-perda_pct"></span></th>
                                 <th class="pb-4 text-center no-print">Ação</th>
                             </tr>
                         </thead>
@@ -103,20 +104,18 @@
         <div id="aba-ranking" class="hidden space-y-4"><div id="containerRanking" class="space-y-4"></div></div>
     </div>
 
-    <!-- MODAL: HISTÓRICO / EXCLUSÃO -->
+    <!-- MODAIS -->
+    <!-- Modal Histórico -->
     <div id="modalHistorico" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50" onclick="if(event.target.id === 'modalHistorico') fecharModais()">
         <div class="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl relative" onclick="event.stopPropagation()">
             <button onclick="fecharModais()" class="absolute top-8 right-8 text-gray-300 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
-            <h2 class="text-xl font-bold mb-2 text-gray-800">Histórico de Pesagens</h2>
-            <p id="nomeMembroHistorico" class="text-indigo-600 font-bold mb-6 italic text-sm"></p>
-            <div id="listaHistorico" class="max-h-60 overflow-y-auto space-y-2 mb-6">
-                <!-- Itens de histórico aparecem aqui -->
-            </div>
-            <p class="text-[10px] text-gray-400 text-center italic">Ao excluir a pesagem mais recente, o peso atual voltará para o registro anterior.</p>
+            <h2 class="text-xl font-bold mb-2 text-gray-800 italic">Histórico de Pesagens</h2>
+            <p id="nomeMembroHistorico" class="text-indigo-600 font-bold mb-6 text-sm"></p>
+            <div id="listaHistorico" class="max-h-60 overflow-y-auto space-y-2 mb-6"></div>
         </div>
     </div>
 
-    <!-- MODAL: REGISTRAR PESO -->
+    <!-- Modal Lançamento -->
     <div id="modalLancamento" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-50" onclick="if(event.target.id === 'modalLancamento') fecharModais()">
         <div class="bg-white w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl relative" onclick="event.stopPropagation()">
             <button onclick="fecharModais()" class="absolute top-8 right-8 text-gray-300 hover:text-gray-600"><i class="fas fa-times text-xl"></i></button>
@@ -160,13 +159,18 @@
         let dadosMembros = [];
         let historicoCompleto = [];
         let chartInstance = null;
+        let configOrdenacao = { campo: 'nome', crescente: true };
 
         function normalizar(m) {
+            const inicial = parseFloat(m.peso_inicial || m.Peso_inicial || 0);
+            const atual = parseFloat(m.peso_atual || m.Peso_atual || 0);
             return {
                 id: m.id,
                 nome: m.nome || m.Nome || "-",
-                peso_inicial: parseFloat(m.peso_inicial || m.Peso_inicial || 0),
-                peso_atual: parseFloat(m.peso_atual || m.Peso_atual || 0)
+                peso_inicial: inicial,
+                peso_atual: atual,
+                eliminado: inicial - atual,
+                perda_pct: inicial > 0 ? ((inicial - atual) / inicial) * 100 : 0
             };
         }
 
@@ -174,115 +178,168 @@
             const resMembros = await supabaseClient.from('participantes').select('*');
             const resHist = await supabaseClient.from('historico').select('*').order('data', { ascending: true });
             if (!resMembros.error) {
-                dadosMembros = resMembros.data.map(m => normalizar(m)).sort((a,b) => a.nome.localeCompare(b.nome));
+                dadosMembros = resMembros.data.map(m => normalizar(m));
                 historicoCompleto = resHist.data || [];
-                atualizarCards();
-                renderizarRelatorio();
-                renderizarRanking();
-                popularSelect();
+                atualizarTudo();
                 document.getElementById('dataRelatorio').innerText = "Atualizado em: " + new Date().toLocaleString('pt-BR');
             }
         }
 
-        // --- FUNÇÕES DE PDF CORRIGIDAS ---
-        function gerarPDF() {
-            const elemento = document.getElementById('conteudoPDF');
-            const dataHoje = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-            const opcoes = {
-                margin: [15, 10, 15, 10], // Margens maiores
-                filename: `Relatorio-Desafio-${dataHoje}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-            html2pdf().set(opcoes).from(elemento).save();
+        function atualizarTudo() {
+            ordenarDadosLocais();
+            atualizarCards();
+            renderizarRelatorio();
+            renderizarRanking();
+            popularSelect();
+            if(!document.getElementById('aba-evolucao').classList.contains('hidden')) renderizarGrafico();
         }
 
-        // --- FUNÇÕES DE HISTÓRICO / EXCLUSÃO ---
-        async function abrirHistorico(idMembro) {
-            const membro = dadosMembros.find(m => m.id == idMembro);
-            const hist = historicoCompleto.filter(h => h.id_participante == idMembro).sort((a,b) => new Date(b.data) - new Date(a.data));
-            
-            document.getElementById('nomeMembroHistorico').innerText = membro.nome;
-            const container = document.getElementById('listaHistorico');
-            
-            container.innerHTML = hist.map(h => `
-                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
-                    <div>
-                        <p class="text-[10px] text-gray-400 font-bold uppercase">${new Date(h.data + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
-                        <p class="font-bold text-gray-700">${h.peso} kg</p>
-                    </div>
-                    <button onclick="excluirPesagem(${h.id}, ${h.id_participante})" class="text-red-300 hover:text-red-500 transition-colors p-2">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                </div>
-            `).join('') || '<p class="text-center text-gray-400 py-4">Nenhuma pesagem além da inicial.</p>';
-            
-            document.getElementById('modalHistorico').classList.remove('hidden');
-        }
-
-        async function excluirPesagem(idPesagem, idMembro) {
-            if(!confirm("Tem certeza que deseja apagar este registro?")) return;
-
-            // 1. Exclui do histórico
-            const { error: err1 } = await supabaseClient.from('historico').delete().eq('id', idPesagem);
-            
-            if(!err1) {
-                // 2. Recarrega os dados locais para encontrar o novo "peso atual"
-                const { data: novoHist } = await supabaseClient.from('historico')
-                    .select('peso')
-                    .eq('id_participante', idMembro)
-                    .order('data', { ascending: false })
-                    .limit(1);
-
-                // 3. Atualiza a tabela de participantes com o peso anterior (ou inicial se não sobrar nada)
-                const membro = dadosMembros.find(m => m.id == idMembro);
-                const novoPesoAtual = novoHist.length > 0 ? novoHist[0].peso : membro.peso_inicial;
-                
-                await supabaseClient.from('participantes').update({ peso_atual: novoPesoAtual }).eq('id', idMembro);
-                
-                fecharModais();
-                carregarTudo();
-                alert("Registro removido com sucesso!");
+        // --- FUNÇÃO DE ORDENAÇÃO ---
+        function ordenarPor(campo) {
+            if (configOrdenacao.campo === campo) {
+                configOrdenacao.crescente = !configOrdenacao.crescente;
+            } else {
+                configOrdenacao.campo = campo;
+                configOrdenacao.crescente = true;
             }
+            atualizarTudo();
         }
 
-        // --- OUTRAS FUNÇÕES ---
+        function ordenarDadosLocais() {
+            dadosMembros.sort((a, b) => {
+                let valA = a[configOrdenacao.campo];
+                let valB = b[configOrdenacao.campo];
+                
+                if (typeof valA === 'string') {
+                    return configOrdenacao.crescente ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                } else {
+                    return configOrdenacao.crescente ? valA - valB : valB - valA;
+                }
+            });
+        }
+
         function renderizarRelatorio() {
             const tbody = document.getElementById('tabelaRelatorio');
-            tbody.innerHTML = dadosMembros.map(m => {
-                let pKg = (m.peso_inicial - m.peso_atual).toFixed(1);
-                let pPct = m.peso_inicial > 0 ? ((pKg / m.peso_inicial) * 100).toFixed(1) : "0.0";
-                return `<tr>
+            // Limpa setas de todos
+            document.querySelectorAll('th span').forEach(s => s.innerHTML = '');
+            // Coloca seta no atual
+            const seta = document.getElementById(`seta-${configOrdenacao.campo}`);
+            if (seta) seta.innerHTML = configOrdenacao.crescente ? ' ↓' : ' ↑';
+
+            tbody.innerHTML = dadosMembros.map(m => `
+                <tr>
                     <td class="py-4 font-bold text-gray-700">${m.nome}</td>
-                    <td class="py-4 text-gray-400">${m.peso_inicial} kg</td>
-                    <td class="py-4 font-bold text-gray-600">${m.peso_atual} kg</td>
-                    <td class="py-4 font-bold text-green-500">${pKg} kg</td>
-                    <td class="py-4 text-right font-bold text-[#6366f1]">${pPct}%</td>
+                    <td class="py-4 text-gray-400">${m.peso_inicial.toFixed(1)} kg</td>
+                    <td class="py-4 font-bold text-gray-600">${m.peso_atual.toFixed(1)} kg</td>
+                    <td class="py-4 font-bold text-green-500">${m.eliminado.toFixed(1)} kg</td>
+                    <td class="py-4 text-right font-bold text-[#6366f1]">${m.perda_pct.toFixed(1)}%</td>
                     <td class="py-4 text-center no-print">
-                        <button onclick="abrirHistorico(${m.id})" class="text-indigo-300 hover:text-indigo-600 p-2 transition-colors">
-                            <i class="fas fa-history"></i>
-                        </button>
+                        <button onclick="abrirHistorico(${m.id})" class="text-indigo-300 hover:text-indigo-600 p-2"><i class="fas fa-history"></i></button>
                     </td>
-                </tr>`;
-            }).join('');
+                </tr>
+            `).join('');
+        }
+
+        // --- PDF / STATUS / RANKING ---
+        function gerarPDF() {
+            const elemento = document.getElementById('conteudoPDF');
+            html2pdf().set({ margin: 15, filename: 'Relatorio-Desafio.pdf', html2canvas: { scale: 2 }, jsPDF: { format: 'a4', orientation: 'portrait' } }).from(elemento).save();
         }
 
         function atualizarCards() {
             document.getElementById('cardParticipantes').innerText = dadosMembros.length;
-            let total = dadosMembros.reduce((acc, m) => acc + (m.peso_inicial - m.peso_atual), 0);
+            let total = dadosMembros.reduce((acc, m) => acc + m.eliminado, 0);
             document.getElementById('cardTotalKg').innerText = total.toFixed(1) + " kg";
-            let ordenado = [...dadosMembros].sort((a,b) => {
-                let pA = a.peso_inicial > 0 ? (a.peso_inicial - a.peso_atual) / a.peso_inicial : 0;
-                let pB = b.peso_inicial > 0 ? (b.peso_inicial - b.peso_atual) / b.peso_inicial : 0;
-                return pB - pA;
+            let lider = [...dadosMembros].sort((a,b) => b.perda_pct - a.perda_pct)[0];
+            document.getElementById('cardLider').innerText = lider ? lider.nome : "-";
+        }
+
+        function renderizarRanking() {
+            const container = document.getElementById('containerRanking');
+            let ranking = [...dadosMembros].sort((a,b) => b.perda_pct - a.perda_pct);
+            container.innerHTML = ranking.map((m, i) => `
+                <div class="bg-white p-6 rounded-[2rem] border-2 ${i===0?'border-yellow-200 bg-yellow-50/30':'border-gray-50'} flex justify-between items-center">
+                    <div class="flex items-center gap-4">
+                        <span class="text-2xl">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span>
+                        <div><p class="font-bold text-gray-800">${m.nome}</p><p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">${i===0?'Líder Atual':''}</p></div>
+                    </div>
+                    <div class="text-right"><p class="text-2xl font-bold text-green-500">${m.perda_pct.toFixed(1)}%</p></div>
+                </div>
+            `).join('');
+        }
+
+        function renderizarGrafico() {
+            const ctx = document.getElementById('graficoEvolucao').getContext('2d');
+            if(chartInstance) chartInstance.destroy();
+            const datas = [...new Set(historicoCompleto.map(h => h.data))].sort();
+            const datasets = dadosMembros.map((m, idx) => {
+                const hMembro = historicoCompleto.filter(h => h.id_participante == m.id);
+                const pontos = datas.map(d => {
+                    const r = hMembro.find(h => h.data === d);
+                    return r ? (((m.peso_inicial - r.peso) / m.peso_inicial) * 100).toFixed(2) : null;
+                });
+                return { label: m.nome, data: pontos, borderColor: `hsl(${idx*60}, 70%, 50%)`, tension: 0.3, spanGaps: true };
             });
-            document.getElementById('cardLider').innerText = (ordenado.length > 0 && ordenado[0].nome !== "-") ? ordenado[0].nome : "-";
+            chartInstance = new Chart(ctx, { type: 'line', data: { labels: datas.map(d => d.split('-')[2]+'/'+d.split('-')[1]), datasets: datasets }, options: { responsive: true, maintainAspectRatio: false } });
+        }
+
+        // --- HISTÓRICO / EXCLUSÃO ---
+        async function abrirHistorico(idMembro) {
+            const membro = dadosMembros.find(m => m.id == idMembro);
+            const hist = historicoCompleto.filter(h => h.id_participante == idMembro).sort((a,b) => new Date(b.data) - new Date(a.data));
+            document.getElementById('nomeMembroHistorico').innerText = membro.nome;
+            document.getElementById('listaHistorico').innerHTML = hist.map(h => `
+                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                    <div><p class="text-[10px] text-gray-400 font-bold uppercase">${new Date(h.data + 'T00:00:00').toLocaleDateString('pt-BR')}</p><p class="font-bold text-gray-700">${h.peso} kg</p></div>
+                    <button onclick="excluirPesagem(${h.id}, ${h.id_participante})" class="text-red-300 hover:text-red-500 p-2"><i class="fas fa-trash-alt"></i></button>
+                </div>
+            `).join('') || '<p class="text-center text-gray-400 py-4">Apenas peso inicial.</p>';
+            document.getElementById('modalHistorico').classList.remove('hidden');
+        }
+
+        async function excluirPesagem(idH, idM) {
+            if(!confirm("Apagar registro?")) return;
+            await supabaseClient.from('historico').delete().eq('id', idH);
+            const { data: novoH } = await supabaseClient.from('historico').select('peso').eq('id_participante', idM).order('data', { ascending: false }).limit(1);
+            const m = dadosMembros.find(x => x.id == idM);
+            const novoP = novoH.length > 0 ? novoH[0].peso : m.peso_inicial;
+            await supabaseClient.from('participantes').update({ peso_atual: novoP }).eq('id', idM);
+            fecharModais(); carregarTudo();
+        }
+
+        // --- LANÇAMENTO / MEMBRO ---
+        async function salvarNovoPeso() {
+            const id = document.getElementById('selectMembro').value;
+            const peso = parseFloat(document.getElementById('inputNovoPeso').value);
+            const data = document.getElementById('inputData').value;
+            if(id && peso && data) {
+                await supabaseClient.from('participantes').update({ peso_atual: peso }).eq('id', id);
+                await supabaseClient.from('historico').insert([{ id_participante: id, peso: peso, data: data }]);
+                fecharModais(); carregarTudo();
+            }
+        }
+
+        async function criarMembro() {
+            const nome = document.getElementById('novoNome').value;
+            const pi = parseFloat(document.getElementById('novoPesoI').value);
+            if(nome && pi) {
+                const { data } = await supabaseClient.from('participantes').insert([{nome, peso_inicial: pi, peso_atual: pi}]).select();
+                if(data) await supabaseClient.from('historico').insert([{ id_participante: data[0].id, peso: pi, data: '2026-01-01' }]);
+                fecharModais(); carregarTudo();
+            }
+        }
+
+        // --- UTILITÁRIOS ---
+        function trocarAba(aba) {
+            ['painel', 'relatorio', 'evolucao', 'ranking'].forEach(a => {
+                document.getElementById('aba-'+a).classList.toggle('hidden', a !== aba);
+                document.getElementById('btn-'+a).className = a === aba ? 'flex-1 py-3 px-4 rounded-xl font-bold bg-[#6366f1] text-white transition-all' : 'flex-1 py-3 px-4 rounded-xl font-bold text-gray-400 transition-all';
+            });
+            if(aba === 'evolucao') setTimeout(renderizarGrafico, 150);
         }
 
         function popularSelect() {
-            const select = document.getElementById('selectMembro');
-            select.innerHTML = '<option value="">Escolha seu nome...</option>' + dadosMembros.map(m => `<option value="${m.id}">${m.nome}</option>`).join('');
+            document.getElementById('selectMembro').innerHTML = '<option value="">Escolha seu nome...</option>' + dadosMembros.map(m => `<option value="${m.id}">${m.nome}</option>`).join('');
         }
 
         function selecionarMembroParaPeso() {
@@ -295,82 +352,18 @@
             } else { document.getElementById('camposPeso').classList.add('hidden'); }
         }
 
-        function renderizarRanking() {
-            const container = document.getElementById('containerRanking');
-            let ordenado = [...dadosMembros].sort((a,b) => {
-                let pA = a.peso_inicial > 0 ? (a.peso_inicial - a.peso_atual) / a.peso_inicial : 0;
-                let pB = b.peso_inicial > 0 ? (b.peso_inicial - b.peso_atual) / b.peso_inicial : 0;
-                return pB - pA;
-            });
-            container.innerHTML = ordenado.map((m, i) => {
-                let pKg = (m.peso_inicial - m.peso_atual).toFixed(1);
-                let pPct = m.peso_inicial > 0 ? ((pKg / m.peso_inicial) * 100).toFixed(1) : "0.0";
-                return `<div class="bg-white p-6 rounded-[2rem] border-2 ${i===0?'border-yellow-200 bg-yellow-50/30':'border-gray-50'} flex justify-between items-center"><div class="flex items-center gap-4"><span class="text-2xl">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</span><div><p class="font-bold text-gray-800">${m.nome}</p><p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">${i===0?'Líder Atual':''}</p></div></div><div class="text-right"><p class="text-2xl font-bold text-green-500">${pPct}%</p></div></div>`;
-            }).join('');
-        }
-
-        function renderizarGrafico() {
-            const ctx = document.getElementById('graficoEvolucao').getContext('2d');
-            if(chartInstance) chartInstance.destroy();
-            const datas = [...new Set(historicoCompleto.map(h => h.data))].sort();
-            const datasets = dadosMembros.map((m, idx) => {
-                const hMembro = historicoCompleto.filter(h => h.id_participante == m.id);
-                const pontos = datas.map(d => {
-                    const r = hMembro.find(h => h.data === d);
-                    return r && m.peso_inicial > 0 ? ((m.peso_inicial - r.peso) / m.peso_inicial * 100).toFixed(2) : null;
-                });
-                return { label: m.nome, data: pontos, borderColor: `hsl(${idx*60}, 70%, 50%)`, tension: 0.3, fill: false, spanGaps: true };
-            });
-            chartInstance = new Chart(ctx, { type: 'line', data: { labels: datas.map(d => d.split('-')[2]+'/'+d.split('-')[1]), datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
-        }
-
-        async function salvarNovoPeso() {
-            const id = document.getElementById('selectMembro').value;
-            const peso = parseFloat(document.getElementById('inputNovoPeso').value);
-            const data = document.getElementById('inputData').value;
-            if(id && peso && data) {
-                await supabaseClient.from('participantes').update({ peso_atual: peso }).eq('id', id);
-                await supabaseClient.from('participantes').update({ Peso_atual: peso }).eq('id', id);
-                await supabaseClient.from('historico').insert([{ id_participante: id, peso: peso, data: data }]);
-                fecharModais();
-                carregarTudo();
-            }
-        }
-
-        async function criarMembro() {
-            const nome = document.getElementById('novoNome').value;
-            const pi = parseFloat(document.getElementById('novoPesoI').value);
-            if(nome && pi) {
-                const { data } = await supabaseClient.from('participantes').insert([{nome: nome, Nome: nome, peso_inicial: pi, Peso_inicial: pi, peso_atual: pi, Peso_atual: pi}]).select();
-                if(data) await supabaseClient.from('historico').insert([{ id_participante: data[0].id, peso: pi, data: '2026-01-01' }]);
-                fecharModais();
-                carregarTudo();
-            }
-        }
-
-        function trocarAba(aba) {
-            ['painel', 'relatorio', 'evolucao', 'ranking'].forEach(a => {
-                document.getElementById('aba-'+a).classList.toggle('hidden', a !== aba);
-                const btn = document.getElementById('btn-'+a);
-                btn.className = a === aba ? 'flex-1 py-3 px-4 rounded-xl font-bold bg-[#6366f1] text-white' : 'flex-1 py-3 px-4 rounded-xl font-bold text-gray-400';
-            });
-            if(aba === 'evolucao') setTimeout(renderizarGrafico, 150);
-        }
-
-        function fecharModais() {
-            document.getElementById('modalLancamento').classList.add('hidden');
-            document.getElementById('modalNovoMembro').classList.add('hidden');
-            document.getElementById('modalHistorico').classList.add('hidden');
-        }
-
         function abrirModalSelecao() {
             document.getElementById('camposPeso').classList.add('hidden');
             document.getElementById('selectMembro').value = "";
             document.getElementById('modalLancamento').classList.remove('hidden');
         }
 
+        function fecharModais() {
+            ['modalLancamento', 'modalNovoMembro', 'modalHistorico'].forEach(m => document.getElementById(m).classList.add('hidden'));
+            document.getElementById('inputNovoPeso').value = "";
+        }
+
         carregarTudo();
     </script>
 </body>
 </html>
-
